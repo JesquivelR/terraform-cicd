@@ -38,7 +38,6 @@ jobs:
 
       - name: Setup Terraform CLI
         uses: hashicorp/setup-terraform@v3
-        # Se eliminó :contentReference[...]
 
       - name: Terraform fmt & validate
         run: |
@@ -47,12 +46,13 @@ jobs:
         # Estos comandos formatean y validan la configuración de Terraform.
 
       - name: Install TFLint
-        uses: terraform-linters/tflint-action@v3.0.0
-        # Se eliminó :contentReference[...]
+        uses: terraform-linters/tflint-action@v3 # Cambiado de v3.0.0 a v3
         with:
-          config_file: .tflint.hcl # Asegúrate que este archivo exista en el working-directory o ajusta la ruta.
-          # Por defecto, el working-directory es ./environments/${{ github.event.inputs.environment }}
-          # Si .tflint.hcl está en la raíz del repo, usa: ../../.tflint.hcl
+          # Asegúrate que este archivo exista en el working-directory especificado arriba
+          # o ajusta la ruta. Si .tflint.hcl está en la raíz del repo,
+          # y el working-directory es ./environments/dev, la ruta sería ../../.tflint.hcl
+          config_file: .tflint.hcl
+          working_directory: ./environments/${{ github.event.inputs.environment }} # Especificar el working directory para tflint también
 
       - name: Terraform Plan
         id: plan
@@ -63,8 +63,7 @@ jobs:
           # AWS_REGION ya está definido a nivel de 'env' del workflow.
 
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v4.4.0
-        # Se eliminó :contentReference[...]
+        uses: actions/upload-artifact@v4 # v4.4.0 es muy específico, v4 es generalmente suficiente
         with:
           name: tfplan-${{ github.event.inputs.environment }}
           path: ./environments/${{ github.event.inputs.environment }}/tfplan # Se especifica la ruta completa al plan.
@@ -79,51 +78,45 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download Terraform Plan
-        uses: actions/download-artifact@v4.4.0
-        # Se eliminó :contentReference[...]
+        uses: actions/download-artifact@v4 # v4.4.0 es muy específico, v4 es generalmente suficiente
         with:
           name: tfplan-${{ github.event.inputs.environment }}
           path: . # Descarga el plan al directorio raíz del runner (o un subdirectorio si se prefiere).
 
       - name: Run tfsec on Plan (tabla)
         uses: aquasecurity/tfsec-action@v1.1.0
-        # Se eliminó :contentReference[...]
         with:
           plan_file: tfplan # tfsec busca 'tfplan' por defecto si está en el directorio raíz.
-                            # Si se descarga a un subdirectorio, ajustar aquí: path/to/tfplan
           format: table
           output: tfsec-results.txt
           # exit-code: '1' # Considera si realmente quieres que el pipeline falle aquí o solo generar el reporte.
-                           # Si quieres que falle, descomenta.
 
       - name: Upload tfsec Report
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4
         with:
           name: tfsec-report-${{ github.event.inputs.environment }}
           path: tfsec-results.txt
 
       - name: Run Checkov on Plan (SARIF)
         uses: bridgecrewio/checkov-action@v12
-        # Se eliminó :contentReference[...]
         with:
           file: tfplan # Escanea directamente el archivo de plan descargado.
           framework: terraform_plan # Especifica que es un plan de Terraform.
           output_format: sarif
-          output_file_path: checkov.sarif # Checkov crea el archivo en la raíz, no necesita ./
-          # 'directory: .' escanearía los archivos .tf, no el plan.
-          # Para escanear el plan, se usa 'file: tfplan' y 'framework: terraform_plan'
+          output_file_path: checkov.sarif # Checkov crea el archivo en la raíz.
+          # soft_fail: true # Descomenta si prefieres que el job no falle por issues de checkov, solo reporte.
+
 
       - name: Upload Checkov Report
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4
         with:
           name: checkov-report-${{ github.event.inputs.environment }}
           path: checkov.sarif
 
   terraform-apply:
     name: Terraform Apply
-    # La condición if está bien, compara strings que es como llegan los inputs booleanos.
     if: ${{ github.event.inputs.auto_approve == 'true' && (github.event.inputs.environment == 'prod' || github.event.inputs.environment == 'dev') }}
-    needs: security-scans # Debería depender de security-scans para asegurar que los escaneos pasen (si configuras exit-code: 1 en tfsec)
+    needs: security-scans
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }} # Usar el input para definir el entorno de GitHub Actions
     defaults:
@@ -140,14 +133,13 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Download Plan Artifact
-        uses: actions/download-artifact@v4.4.0
+        uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ github.event.inputs.environment }}
           path: ./environments/${{ github.event.inputs.environment }} # Descarga el plan al directorio de trabajo correcto.
 
       - name: AWS Login (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
-        # Se eliminó :contentReference[...]
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }} # Asegúrate que este secret esté configurado para el entorno correcto.
           aws-region: ${{ env.AWS_REGION }}
