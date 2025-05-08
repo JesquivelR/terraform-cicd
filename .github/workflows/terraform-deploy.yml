@@ -1,7 +1,7 @@
 name: Terraform Deployment Pipeline
 
 on:
-  workflow_dispatch:  
+  workflow_dispatch:
     inputs:
       environment:
         description: 'Entorno a desplegar'
@@ -10,7 +10,6 @@ on:
         type: choice
         options:
           - dev
-          - staging
           - prod
       auto_approve:
         description: 'Aprobar automáticamente?'
@@ -19,13 +18,32 @@ on:
         type: boolean
 
 env:
-  TF_VERSION: v1.11.4
+  TF_VERSION: 1.11.4
   AWS_REGION: us-west-1
 
 jobs:
+  validate-environment:
+    name: Validate Environment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify Environment Directory
+        run: |
+          if [ ! -d "environments/${{ github.event.inputs.environment }}" ]; then
+            echo "Error: Directorio del entorno no encontrado: environments/${{ github.event.inputs.environment }}"
+            exit 1
+          fi
+          echo "Entorno válido: ${{ github.event.inputs.environment }}"
+
   terraform-setup:
     name: Setup and Validate
+    needs: validate-environment
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./environments/${{ github.event.inputs.environment }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -48,35 +66,57 @@ jobs:
 
   security-checks:
     name: Security Scanning
-    runs-on: ubuntu-latest
     needs: terraform-setup
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./environments/${{ github.event.inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Run TFSec
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'config'
           scan-ref: '.'
-          format: 'table'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
           exit-code: '1'
-          ignore-unfixed: true
+
+      - name: Upload TFSec Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfsect-report-${{ github.event.inputs.environment }}
+          path: trivy-results.sarif
 
       - name: Checkov Scan
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
           framework: terraform
-          quiet: true
+          output_format: sarif
+          output_file: checkov.sarif
+
+      - name: Upload Checkov Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: checkov-report-${{ github.event.inputs.environment }}
+          path: checkov.sarif
 
   terraform-plan:
     name: Terraform Plan
-    runs-on: ubuntu-latest
     needs: [terraform-setup, security-checks]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./environments/${{ github.event.inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: hashicorp/setup-terraform@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -93,7 +133,7 @@ jobs:
       - name: Upload Plan Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: tfplan
+          name: tfplan-${{ github.event.inputs.environment }}
           path: tfplan
 
       - name: Cost Estimation
@@ -103,28 +143,40 @@ jobs:
           terraform_plan_flags: -out=tfplan
           sync_usage_file: true
           show_skipped: false
+          format: table
+          output: infracost-report.md
+
+      - name: Upload Cost Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: cost-report-${{ github.event.inputs.environment }}
+          path: infracost-report.md
 
   terraform-apply:
     name: Terraform Apply
-    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.environment == 'prod' && github.event.inputs.auto_approve == 'true' }}
     needs: terraform-plan
+    runs-on: ubuntu-latest
     environment: production
+    defaults:
+      run:
+        working-directory: ./environments/${{ github.event.inputs.environment }}
     permissions:
       contents: read
       id-token: write
-    # Solo aplica si se selecciona el entorno prod y auto_approve=true
-    if: ${{ github.event.inputs.environment == 'prod' && github.event.inputs.auto_approve == 'true' }}
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: hashicorp/setup-terraform@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Download Plan Artifact
         uses: actions/download-artifact@v3
         with:
-          name: tfplan
+          name: tfplan-${{ github.event.inputs.environment }}
 
       - name: AWS Login (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
