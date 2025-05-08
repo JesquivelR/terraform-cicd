@@ -1,0 +1,37 @@
+# Directorio de proveedores y cache de plugins
+**/.terraform/
+
+# Estado de Terraform
+*.tfstate
+*.tfstate.backup
+
+# Lockfile de proveedores (opcionalmente en CI lo puedes versionar)
+**/.terraform.lock.hcl
+
+# Variables sensibles
+!*.tfvars.example
+
+# Archivos JSON de variables
+*.tfvars.json
+
+# Archivos de override (no versionar)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Crash logs
+crash.log
+
+# Archivos de plan binarios
+*.tfplan
+
+# Carpetas de entorno de IDE
+.idea/
+.vscode/
+
+# Archivos de lock de dependencias
+.terraform.lock.hcl
+
+# Otros
+*.backup
