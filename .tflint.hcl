@@ -1,5 +1,5 @@
 config {
-  module = true # Habilita el análisis de módulos
+  call_module_type = "local"
 }
 
 # Plugin para reglas específicas de AWS
