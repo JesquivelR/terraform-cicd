@@ -8,9 +8,7 @@ on:
         required: true
         default: 'dev'
         type: choice
-        options:
-          - dev
-          - prod
+        options: [dev, prod]
       auto_approve:
         description: 'Aprobar automáticamente?'
         required: false
@@ -21,25 +19,8 @@ env:
   AWS_REGION: us-west-1
 
 jobs:
-  validate-environment:
-    name: Validate Environment
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Verify Environment Directory
-        run: |
-          dir="environments/${{ github.event.inputs.environment }}"
-          if [ ! -d "$dir" ]; then
-            echo "Error: Directorio no encontrado: $dir"
-            exit 1
-          fi
-          echo "Entorno válido: $dir"
-
-  terraform-plan:
-    name: Terraform Init & Plan
-    needs: validate-environment
+  validate-and-plan:
+    name: Validate, Lint & Plan
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,21 +29,25 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Verify Environment Directory
+        run: |
+          if [ ! -d "environments/${{ github.event.inputs.environment }}" ]; then
+            echo "❌ Directorio no encontrado"; exit 1
+          fi
+
       - name: Setup Terraform CLI
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3 :contentReference[oaicite:7]{index=7}
         with: {}
 
-      - name: Terraform Init
-        run: terraform init -input=false
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-
-      - name: Terraform Validate & Format
+      - name: Terraform fmt & validate
         run: |
-          terraform fmt -check -recursive
+          terraform fmt -recursive
           terraform validate
+
+      - name: Install TFLint
+        uses: terraform-linters/tflint-action@v3.0.0 :contentReference[oaicite:8]{index=8}
+        with:
+          config_file: .tflint.hcl
 
       - name: Terraform Plan
         id: plan
@@ -70,41 +55,43 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ env.AWS_REGION }}
 
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4.4.0 :contentReference[oaicite:9]{index=9}
         with:
           name: tfplan-${{ github.event.inputs.environment }}
           path: tfplan
 
-  security-checks:
+  security-scans:
     name: Security Scanning
-    needs: terraform-plan
+    needs: validate-and-plan
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./environments/${{ github.event.inputs.environment }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Run Trivy on Plan (tabla)
-        uses: aquasecurity/trivy-action@0.28.0
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4.4.0 :contentReference[oaicite:10]{index=10}
         with:
-          scan-type: 'plan'
-          scan-ref: 'tfplan'
-          format: 'table'
-          output: 'trivy-plan-results.txt'
+          name: tfplan-${{ github.event.inputs.environment }}
+
+      - name: Run tfsec on Plan (tabla)
+        uses: aquasecurity/tfsec-action@v1.1.0 :contentReference[oaicite:11]{index=11}
+        with:
+          plan: tfplan
+          format: table
+          output: tfsec-results.txt
           exit-code: '1'
 
-      - name: Upload Trivy Report
+      - name: Upload tfsec Report
         uses: actions/upload-artifact@v4.4.0
         with:
-          name: trivy-report-${{ github.event.inputs.environment }}
-          path: trivy-plan-results.txt
+          name: tfsec-report-${{ github.event.inputs.environment }}
+          path: tfsec-results.txt
 
-      - name: Checkov Scan
-        uses: bridgecrewio/checkov-action@v12
+      - name: Run Checkov on Plan (SARIF)
+        uses: bridgecrewio/checkov-action@v12 :contentReference[oaicite:12]{index=12}
         with:
           directory: .
           framework: terraform
@@ -120,7 +107,7 @@ jobs:
   terraform-apply:
     name: Terraform Apply
     if: ${{ github.event.inputs.environment == 'prod' && github.event.inputs.auto_approve == 'true' }}
-    needs: security-checks
+    needs: security-scans
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -135,16 +122,12 @@ jobs:
 
       - name: Setup Terraform CLI
         uses: hashicorp/setup-terraform@v3
-        with: {}
 
-      - name: Download Terraform Plan
+      - name: Download Plan Artifact
         uses: actions/download-artifact@v4.4.0
-        with:
-          name: tfplan-${{ github.event.inputs.environment }}
-          path: tfplan
 
       - name: AWS Login (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v4 :contentReference[oaicite:13]{index=13}
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
