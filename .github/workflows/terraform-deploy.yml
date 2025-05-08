@@ -24,73 +24,89 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
+        # Este working-directory se aplica a todos los 'run' steps por defecto en este job,
+        # a menos que se anule explícitamente en un paso.
         working-directory: ./environments/${{ github.event.inputs.environment }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Verify Environment Directory
+        working-directory: ${{ github.workspace }} # Anula el working-directory por defecto para ESTE PASO.
+                                                 # Se ejecuta desde la raíz del repositorio.
         run: |
+          echo "Verificando la existencia del directorio: environments/${{ github.event.inputs.environment }} desde $(pwd)"
           if [ ! -d "environments/${{ github.event.inputs.environment }}" ]; then
-            echo "Directorio no encontrado: environments/${{ github.event.inputs.environment }}"; exit 1
+            echo "Error: El directorio especificado 'environments/${{ github.event.inputs.environment }}' no fue encontrado en la raíz del repositorio."
+            echo "Contenido de $(pwd) (raíz del workspace):"
+            ls -la
+            echo "Contenido de ./environments (si existe):"
+            ls -la ./environments || echo "./environments no existe o no se puede listar."
+            exit 1
+          else
+            echo "Directorio environments/${{ github.event.inputs.environment }} encontrado."
           fi
-        # Es importante verificar que el directorio de trabajo exista antes de continuar.
+      # Los siguientes pasos 'run' usarán el working-directory definido en defaults.run
+      # (es decir, ./environments/${{ github.event.inputs.environment }})
 
       - name: Setup Terraform CLI
         uses: hashicorp/setup-terraform@v3
+        # Las actions de setup generalmente no se ven afectadas por working-directory.
 
       - name: Terraform fmt & validate
-        run: |
-          terraform fmt -recursive
+        run: | # Se ejecuta en ./environments/ENV
+          terraform fmt -check -recursive # Añadido -check para que falle si no está formateado
           terraform validate
-        # Estos comandos formatean y validan la configuración de Terraform.
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4 # Usando la acción setup-tflint
+        uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: latest # Puedes fijar una versión específica si lo prefieres, ej: v0.50.3
+          tflint_version: latest # Puedes fijar una versión específica si lo prefieres
 
       - name: Run TFLint
-        run: tflint --config=.tflint.hcl --recursive
-        # Este comando se ejecuta en el working-directory definido en defaults.run
-        # Asegúrate que .tflint.hcl esté en ./environments/${{ github.event.inputs.environment }}/.tflint.hcl
-        # o ajusta la ruta --config=../../.tflint.hcl si está en la raíz del repo.
+        run: | # Se ejecuta en ./environments/ENV
+          echo "Ejecutando TFLint en $(pwd)"
+          # Este comando asume que tu archivo .tflint.hcl está en cada directorio de entorno
+          # (ej: environments/dev/.tflint.hcl).
+          # Si .tflint.hcl está en la raíz del repositorio, usa:
+          # tflint --config=${{ github.workspace }}/.tflint.hcl --recursive
+          tflint --config=.tflint.hcl --recursive
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -input=false -out=tfplan
+        run: terraform plan -input=false -out=tfplan # tfplan se creará en ./environments/ENV/tfplan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # AWS_REGION ya está definido a nivel de 'env' del workflow.
 
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ github.event.inputs.environment }}
-          path: ./environments/${{ github.event.inputs.environment }}/tfplan # Se especifica la ruta completa al plan.
+          # El path para upload-artifact es relativo a GITHUB_WORKSPACE (la raíz del repo)
+          path: ./environments/${{ github.event.inputs.environment }}/tfplan
 
   security-scans:
     name: Security Scanning
     needs: validate-and-plan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code # Necesario para algunas herramientas o si se escanean archivos .tf
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ github.event.inputs.environment }}
-          path: . # Descarga el plan al directorio raíz del runner.
+          path: . # Descarga tfplan a la raíz del workspace de este job.
 
       - name: Run tfsec on Plan (tabla)
-        uses: aquasecurity/tfsec-action@v1.1.0 # Puedes verificar si hay una versión más nueva
+        uses: aquasecurity/tfsec-action@v1.1.0
         with:
-          plan_file: tfplan
+          plan_file: tfplan # Busca tfplan en el directorio actual (raíz del workspace)
           format: table
           output: tfsec-results.txt
-          # exit-code: '1' # Descomenta si quieres que el pipeline falle si tfsec encuentra problemas.
+          # exit-code: '1'
 
       - name: Upload tfsec Report
         uses: actions/upload-artifact@v4
@@ -99,13 +115,13 @@ jobs:
           path: tfsec-results.txt
 
       - name: Run Checkov on Plan (SARIF)
-        uses: bridgecrewio/checkov-action@v12 # Puedes verificar si hay una versión más nueva
+        uses: bridgecrewio/checkov-action@v12
         with:
-          file: tfplan
+          file: tfplan # Busca tfplan en el directorio actual
           framework: terraform_plan
           output_format: sarif
           output_file_path: checkov.sarif
-          # soft_fail: true # Descomenta si prefieres que el job no falle por issues de checkov.
+          # soft_fail: true
 
       - name: Upload Checkov Report
         uses: actions/upload-artifact@v4
@@ -124,7 +140,7 @@ jobs:
         working-directory: ./environments/${{ github.event.inputs.environment }}
     permissions:
       contents: read
-      id-token: write # Necesario para OIDC
+      id-token: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -136,7 +152,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ github.event.inputs.environment }}
-          path: ./environments/${{ github.event.inputs.environment }} # Descarga el plan al directorio de trabajo correcto.
+          # Descarga el tfplan al working-directory correcto para terraform apply
+          path: ./environments/${{ github.event.inputs.environment }}
 
       - name: AWS Login (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -146,4 +163,3 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan
-        # El archivo tfplan se espera en el working-directory.
