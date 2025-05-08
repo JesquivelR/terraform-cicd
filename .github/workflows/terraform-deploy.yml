@@ -52,12 +52,14 @@ jobs:
         working-directory: ./environments/${{ github.event.inputs.environment }}
         run: terraform validate
 
-      - name: Run TFLint
+      - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: latest
-          config_file: ${{ github.workspace }}/.tflint.hcl
+
+      - name: Run TFLint
         working-directory: ./environments/${{ github.event.inputs.environment }}
+        run: tflint --config=${{ github.workspace }}/.tflint.hcl --recursive
 
       - name: Terraform Plan
         working-directory: ./environments/${{ github.event.inputs.environment }}
