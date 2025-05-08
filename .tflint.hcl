@@ -5,7 +5,7 @@ config {
 # Plugin para reglas específicas de AWS
 plugin "aws" {
   enabled = true
-  version = "0.39.0"
+  version = "latest"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
