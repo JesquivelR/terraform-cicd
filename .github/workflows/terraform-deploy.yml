@@ -76,20 +76,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Run TFSec
-        uses: aquasecurity/trivy-action@master
+      - name: Run TFSec (Trivy) and output as table
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: 'config'
           scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'table'
+          output: 'trivy-results.txt'
           exit-code: '1'
 
       - name: Upload TFSec Report
         uses: actions/upload-artifact@v4.4.0
         with:
-          name: tfsect-report-${{ github.event.inputs.environment }}
-          path: trivy-results.sarif
+          name: tfsec-report-${{ github.event.inputs.environment }}
+          path: trivy-results.txt
 
       - name: Checkov Scan
         uses: bridgecrewio/checkov-action@v12
@@ -151,7 +151,6 @@ jobs:
         with:
           name: cost-report-${{ github.event.inputs.environment }}
           path: infracost-report.md
-
 
   terraform-apply:
     name: Terraform Apply
