@@ -58,11 +58,9 @@ jobs:
           tflint_version: latest
 
       - name: Initialize TFLint plugins
-        working-directory: ./environments/${{ github.event.inputs.environment }}
         run: tflint --init
 
       - name: Run TFLint
-        working-directory: ./environments/${{ github.event.inputs.environment }}
         run: tflint --config=${{ github.workspace }}/.tflint.hcl --recursive
 
       - name: Terraform Plan
