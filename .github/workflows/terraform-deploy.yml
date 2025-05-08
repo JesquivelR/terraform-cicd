@@ -101,7 +101,7 @@ jobs:
           path: ./environments/${{ github.event.inputs.environment }}
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.1.0
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working-directory: ./environments/${{ github.event.inputs.environment }}
           format: sarif
