@@ -5,6 +5,7 @@ config {
 # Plugin para reglas específicas de AWS
 plugin "aws" {
   enabled = true
+  version = "0.39.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
@@ -54,9 +55,9 @@ rule "aws_s3_bucket_name" {
   regex   = "^[a-z0-9.-]+$"
 }
 
-rule "aws_iam_policy_document_gov_friendly" {
-  enabled = true
-}
+# rule "aws_iam_policy_document_gov_friendly" {
+#   enabled = true
+# }
 
 rule "aws_route_not_specified_target" {
   enabled = true
@@ -67,9 +68,9 @@ rule "terraform_workspace_remote" {
   enabled = true
 }
 
-rule "var_without_type" {
-  enabled = true
-}
+# rule "var_without_type" {
+#   enabled = true
+# }
 
 rule "var_without_description" {
   enabled = false
