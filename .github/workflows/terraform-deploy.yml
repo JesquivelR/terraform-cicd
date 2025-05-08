@@ -86,7 +86,7 @@ jobs:
           exit-code: '1'
 
       - name: Upload TFSec Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.4.0
         with:
           name: tfsect-report-${{ github.event.inputs.environment }}
           path: trivy-results.sarif
@@ -100,7 +100,7 @@ jobs:
           output_file: checkov.sarif
 
       - name: Upload Checkov Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.4.0
         with:
           name: checkov-report-${{ github.event.inputs.environment }}
           path: checkov.sarif
