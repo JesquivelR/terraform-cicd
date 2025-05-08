@@ -53,9 +53,16 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         # Las actions de setup generalmente no se ven afectadas por working-directory.
 
+
+      - name: Terraform Init
+        run: terraform init -input=false
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
       - name: Terraform fmt & validate
         run: | # Se ejecuta en ./environments/ENV
-          terraform fmt -check -recursive # Añadido -check para que falle si no está formateado
+          terraform fmt -check -recursive
           terraform validate
 
       - name: Setup TFLint
