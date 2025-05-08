@@ -37,7 +37,7 @@ resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = each.value
   availability_zone = data.aws_availability_zones.available.names[each.key]
-  
+
   tags = {
     Name = "${var.environment}-private-subnet-${each.key + 1}"
   }
@@ -72,8 +72,8 @@ resource "aws_route_table" "public" {
 
 # Asociación de subredes públicas con la tabla de rutas
 resource "aws_route_table_association" "public" {
-  for_each      = aws_subnet.public
-  subnet_id     = each.value.id
+  for_each       = aws_subnet.public
+  subnet_id      = each.value.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -119,7 +119,7 @@ resource "aws_route_table" "private" {
 
 # Asociación de subredes privadas con la tabla de rutas privada
 resource "aws_route_table_association" "private" {
-  for_each      = { for idx, subnet in aws_subnet.private : idx => subnet }
-  subnet_id     = each.value.id
+  for_each       = { for idx, subnet in aws_subnet.private : idx => subnet }
+  subnet_id      = each.value.id
   route_table_id = var.create_nat_gateway_per_az ? aws_route_table.private[each.key].id : aws_route_table.private[0].id
 }
