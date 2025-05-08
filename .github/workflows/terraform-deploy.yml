@@ -4,76 +4,68 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Entorno a desplegar'
+        description: "Entorno a desplegar"
         required: true
-        default: 'dev'
+        default: "dev"
         type: choice
         options: [dev, prod]
       auto_approve:
-        description: 'Aprobar automáticamente?'
+        description: "Aprobar automáticamente (solo para dev)"
         required: false
-        default: 'false'
+        default: "false"
         type: boolean
 
 env:
   AWS_REGION: us-west-1
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  validate-and-plan:
-    name: Validate, Lint & Plan
+  terraform-validation:
+    name: "Validate & Plan"
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./environments/${{ github.event.inputs.environment }}
+    environment: ${{ github.event.inputs.environment }}
+    
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify Environment Directory
-        working-directory: ${{ github.workspace }}
+      - name: Verify environment directory
         run: |
-          echo "Verificando directorio: environments/${{ github.event.inputs.environment }}"
-          if [ ! -d "environments/${{ github.event.inputs.environment }}" ]; then
-            echo "::error::Directorio environments/${{ github.event.inputs.environment }} no encontrado"
-            exit 1
-          fi
+          echo "Entorno seleccionado: ${{ github.event.inputs.environment }}"
+          ls -la environments/${{ github.event.inputs.environment }}
 
-      - name: Setup Terraform CLI
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Terraform Init
+        working-directory: ./environments/${{ github.event.inputs.environment }}
+        run: terraform init -input=false -backend=false
+
       - name: Terraform Format Check
+        working-directory: ./environments/${{ github.event.inputs.environment }}
         run: terraform fmt -check -recursive
 
-      - name: Terraform Init
-        run: terraform init -input=false
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
       - name: Terraform Validate
+        working-directory: ./environments/${{ github.event.inputs.environment }}
         run: terraform validate
 
-      - name: Setup TFLint
+      - name: Run TFLint
         uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: latest
-
-      - name: Run TFLint  
-        run: |
-          tflint \
-            --chdir=./environments/${{ github.event.inputs.environment }} \
-            --config=${{ github.workspace }}/.tflint.hcl \
-            --recursive
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          config_file: ${{ github.workspace }}/.tflint.hcl
+        working-directory: ./environments/${{ github.event.inputs.environment }}
 
       - name: Terraform Plan
-        id: plan
-        run: terraform plan -input=false -out=tfplan
+        working-directory: ./environments/${{ github.event.inputs.environment }}
+        run: |
+          terraform plan -input=false -out=tfplan
+          echo "PLAN_FILE=tfplan" >> $GITHUB_ENV
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ env.AWS_REGION }}
 
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@v4
@@ -82,13 +74,11 @@ jobs:
           path: ./environments/${{ github.event.inputs.environment }}/tfplan
 
   security-scans:
-    name: Security Scanning
-    needs: validate-and-plan
+    name: "Security Scans"
+    needs: terraform-validation
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
         with:
@@ -98,15 +88,14 @@ jobs:
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.1.0
         with:
-          plan_file: ./environments/${{ github.event.inputs.environment }}/tfplan
-          format: table
-          output: tfsec-results.txt
+          working-directory: ./environments/${{ github.event.inputs.environment }}
+          format: sarif
+          output-file: tfsec-results.sarif
 
-      - name: Upload tfsec Report
-        uses: actions/upload-artifact@v4
+      - name: Upload tfsec results
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          name: tfsec-report-${{ github.event.inputs.environment }}
-          path: tfsec-results.txt
+          sarif_file: tfsec-results.sarif
 
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
@@ -116,29 +105,25 @@ jobs:
           output_format: sarif
           output_file_path: checkov.sarif
 
-      - name: Upload Checkov Report
-        uses: actions/upload-artifact@v4
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          name: checkov-report-${{ github.event.inputs.environment }}
-          path: checkov.sarif
+          sarif_file: checkov.sarif
 
   terraform-apply:
-    name: Terraform Apply
-    if: ${{ github.event.inputs.auto_approve == 'true' && contains('dev prod', github.event.inputs.environment) }}
-    needs: security-scans
+    name: "Apply Changes"
+    needs: [terraform-validation, security-scans]
+    if: ${{ github.event.inputs.auto_approve == 'true' }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
-    defaults:
-      run:
-        working-directory: ./environments/${{ github.event.inputs.environment }}
-    permissions:
-      contents: read
-      id-token: write
+    environment: 
+      name: ${{ github.event.inputs.environment }}
+      url: https://github.com/JesquivelR/terraform-cicd/deployments
+    
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Terraform CLI
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Download Plan Artifact
@@ -147,11 +132,13 @@ jobs:
           name: tfplan-${{ github.event.inputs.environment }}
           path: ./environments/${{ github.event.inputs.environment }}
 
-      - name: AWS OIDC Login
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Terraform
 
       - name: Terraform Apply
+        working-directory: ./environments/${{ github.event.inputs.environment }}
         run: terraform apply -input=false -auto-approve tfplan
