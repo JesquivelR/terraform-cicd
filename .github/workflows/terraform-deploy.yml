@@ -66,7 +66,10 @@ jobs:
       - name: Terraform Plan
         working-directory: ./environments/${{ github.event.inputs.environment }}
         run: |
-          terraform plan -input=false -out=tfplan
+          terraform plan \
+            -input=false \
+            -var-file=terraform.tfvars \
+            -out=tfplan
           echo "PLAN_FILE=tfplan" >> $GITHUB_ENV
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
