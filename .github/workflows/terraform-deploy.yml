@@ -12,7 +12,7 @@ on:
       auto_approve:
         description: "Aprobar automáticamente (solo para dev)"
         required: false
-        default: "false"
+        default: false
         type: boolean
 
 env:
@@ -53,7 +53,7 @@ jobs:
         run: terraform init -input=false
 
       - name: Terraform Format Check
-        working-directory: ./environments/${{ github.event.inputs.environment }}
+        #working-directory: ./environments/${{ github.event.inputs.environment }}
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
@@ -103,9 +103,8 @@ jobs:
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
-          working-directory: ./environments/${{ github.event.inputs.environment }}
+          working_directory : ./environments/${{ github.event.inputs.environment }}
           format: sarif
-          output-file: tfsec-results.sarif
 
       - name: Upload tfsec results
         uses: github/codeql-action/upload-sarif@v3
