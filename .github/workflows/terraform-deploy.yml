@@ -101,7 +101,7 @@ jobs:
           path: ./environments/${{ github.event.inputs.environment }}
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.4
+        uses: aquasecurity/tfsec-sarif-action@v0.1.4
         with:
           working_directory : ./environments/${{ github.event.inputs.environment }}
           sarif_file: tfsec-results.sarif
