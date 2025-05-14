@@ -101,6 +101,7 @@ jobs:
         working-directory: ./environments/${{ github.event.inputs.environment }}
         run: |
           pwd
+          ls -lsa
           # Genera el desglose en formato JSON y lo guarda en la raíz del workspace
           infracost breakdown \
             --path ./environments/${{ inputs.environment }}/tfplan.json \
