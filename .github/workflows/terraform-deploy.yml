@@ -118,8 +118,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: infracost-report-${{ github.event.inputs.environment }}
-          # La ruta es relativa a la raíz del workspace
-          path: infracost-report-${{ github.event.inputs.environment }}.json
+          path: report.json
 
   security-scans:
     name: "Security Scans"
