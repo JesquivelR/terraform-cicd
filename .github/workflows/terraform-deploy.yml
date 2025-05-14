@@ -18,16 +18,19 @@ on:
 env:
   AWS_REGION: us-west-1
   TERRAFORM_PLAN_JSON_FILE: tfplan.json
+  TFLINT_VERSION: v0.50.3
+  TFSEC_ACTION_VERSION: v0.1.4
+  CHECKOV_ACTION_VERSION: v12
+  INFRACOST_SETUP_VERSION: v2
 
 permissions:
   contents: read
   actions: read
   security-events: write
-  id-token: write
 
 jobs:
   terraform-validation:
-    name: "Validate & Plan"
+    name: "Validate & Plan & Cost Analysis"
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }}
     
@@ -35,7 +38,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials for Validation & Plan
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -55,6 +58,7 @@ jobs:
         run: terraform init -input=false
 
       - name: Terraform Format Check
+        working-directory: ./
         run: terraform fmt -check -recursive
 
       - name: Terraform Validate
@@ -64,13 +68,15 @@ jobs:
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: latest
+          tflint_version: ${{ env.TFLINT_VERSION }}
 
       - name: Initialize TFLint plugins
+        working-directory: ./
         run: tflint --init
 
-      - name: Run TFLint
-        run: tflint --config=${{ github.workspace }}/.tflint.hcl --recursive
+      - name: Run TFLint for Log Output
+        working-directory: ./
+        run: tflint --config=.tflint.hcl --recursive
 
       - name: Terraform Plan and Convert to JSON
         working-directory: ./environments/${{ github.event.inputs.environment }}
@@ -82,16 +88,45 @@ jobs:
           
           terraform show -json tfplan.binary > ${{ env.TERRAFORM_PLAN_JSON_FILE }}
           
-          # Opcional: verificar que el archivo JSON se creó
           ls -l ${{ env.TERRAFORM_PLAN_JSON_FILE }}
-        env:
-          AWS_REGION: ${{ env.AWS_REGION }}
 
       - name: Upload Terraform Plan JSON
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-json-${{ github.event.inputs.environment }} # Nombre del artefacto actualizado
-          path: ./environments/${{ github.event.inputs.environment }}/${{ env.TERRAFORM_PLAN_JSON_FILE }} # Ruta al archivo JSON
+          name: tfplan-json-${{ github.event.inputs.environment }}
+          path: ./environments/${{ github.event.inputs.environment }}/${{ env.TERRAFORM_PLAN_JSON_FILE }}
+
+      # --- Infracost Cost Analysis ---
+      - name: Setup Infracost
+        uses: infracost/setup-infracost@${{ env.INFRACOST_SETUP_VERSION }}
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Run Infracost Breakdown
+        # El working-directory se establece para que --path . se refiera al directorio del entorno
+        # y --plan-path pueda ser solo el nombre del archivo JSON.
+        working-directory: ./environments/${{ github.event.inputs.environment }}
+        run: |
+          # Genera el desglose en formato JSON y lo guarda en la raíz del workspace
+          infracost breakdown --path . \
+            --plan-path ${{ env.TERRAFORM_PLAN_JSON_FILE }} \
+            --format json \
+            --out-file ../../infracost-report-${{ github.event.inputs.environment }}.json \
+            --show-skipped # Opcional: muestra recursos omitidos por Infracost
+          
+          echo "--- Infracost Cost Estimation Summary (Table) ---"
+          # Muestra el desglose en formato de tabla en el log
+          infracost breakdown --path . \
+            --plan-path ${{ env.TERRAFORM_PLAN_JSON_FILE }} \
+            --format table \
+            --show-skipped
+
+      - name: Upload Infracost Breakdown Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: infracost-report-${{ github.event.inputs.environment }}
+          # La ruta es relativa a la raíz del workspace
+          path: infracost-report-${{ github.event.inputs.environment }}.json
 
   security-scans:
     name: "Security Scans"
@@ -109,7 +144,7 @@ jobs:
           path: ./environments/${{ github.event.inputs.environment }}
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-sarif-action@v0.1.4
+        uses: aquasecurity/tfsec-sarif-action@${{ env.TFSEC_ACTION_VERSION }}
         with:
           working_directory : ./environments/${{ github.event.inputs.environment }}
           sarif_file: tfsec-results.sarif
@@ -120,7 +155,7 @@ jobs:
           sarif_file: tfsec-results.sarif
 
       - name: Run Checkov
-        uses: bridgecrewio/checkov-action@v12 
+        uses: bridgecrewio/checkov-action@${{ env.CHECKOV_ACTION_VERSION }}
         with:
           file: ./environments/${{ github.event.inputs.environment }}/${{ env.TERRAFORM_PLAN_JSON_FILE }}
           framework: terraform_plan 
