@@ -97,21 +97,18 @@ jobs:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Run Infracost Breakdown
-        # El working-directory se establece para que --path . se refiera al directorio del entorno
-        # y --plan-path pueda ser solo el nombre del archivo JSON.
         working-directory: ./environments/${{ github.event.inputs.environment }}
         run: |
           # Genera el desglose en formato JSON y lo guarda en la raíz del workspace
-          infracost breakdown --path . \
-            --plan-path ${{ env.TERRAFORM_PLAN_JSON_FILE }} \
+          infracost breakdown \
+            --path ./environments/${{ inputs.environment }}/tfplan.json \
             --format json \
-            --out-file ../../infracost-report-${{ github.event.inputs.environment }}.json \
-            --show-skipped # Opcional: muestra recursos omitidos por Infracost
-          
+            --out-file report.json \
+            --show-skipped
+
           echo "--- Infracost Cost Estimation Summary (Table) ---"
-          # Muestra el desglose en formato de tabla en el log
-          infracost breakdown --path . \
-            --plan-path ${{ env.TERRAFORM_PLAN_JSON_FILE }} \
+          infracost breakdown \
+            --path ./environments/${{ inputs.environment }}/tfplan.json \
             --format table \
             --show-skipped
 
