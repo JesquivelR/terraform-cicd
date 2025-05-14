@@ -70,7 +70,9 @@ jobs:
 
       - name: Run TFLint for Log Output
         working-directory: ./
-        run: tflint --config=.tflint.hcl --recursive
+        run: |
+          ls -la
+          tflint --config=.tflint.hcl --recursive
 
       - name: Terraform Plan and Convert to JSON
         working-directory: ./environments/${{ github.event.inputs.environment }}
