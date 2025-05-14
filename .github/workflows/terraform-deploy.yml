@@ -92,7 +92,7 @@ jobs:
 
       # --- Infracost Cost Analysis ---
       - name: Setup Infracost
-        uses: infracost/setup-infracost@v0.10.41
+        uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
