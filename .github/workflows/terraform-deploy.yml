@@ -18,10 +18,6 @@ on:
 env:
   AWS_REGION: us-west-1
   TERRAFORM_PLAN_JSON_FILE: tfplan.json
-  TFLINT_VERSION: v0.50.3
-  TFSEC_ACTION_VERSION: v0.1.4
-  CHECKOV_ACTION_VERSION: v12
-  INFRACOST_SETUP_VERSION: v2
 
 permissions:
   contents: read
@@ -67,8 +63,6 @@ jobs:
 
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
-        with:
-          tflint_version: ${{ env.TFLINT_VERSION }}
 
       - name: Initialize TFLint plugins
         working-directory: ./
@@ -98,7 +92,7 @@ jobs:
 
       # --- Infracost Cost Analysis ---
       - name: Setup Infracost
-        uses: infracost/setup-infracost@${{ env.INFRACOST_SETUP_VERSION }}
+        uses: infracost/setup-infracost@v0.10.41
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
@@ -144,7 +138,7 @@ jobs:
           path: ./environments/${{ github.event.inputs.environment }}
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-sarif-action@${{ env.TFSEC_ACTION_VERSION }}
+        uses: aquasecurity/tfsec-sarif-action@v0.1.4
         with:
           working_directory : ./environments/${{ github.event.inputs.environment }}
           sarif_file: tfsec-results.sarif
@@ -155,7 +149,7 @@ jobs:
           sarif_file: tfsec-results.sarif
 
       - name: Run Checkov
-        uses: bridgecrewio/checkov-action@${{ env.CHECKOV_ACTION_VERSION }}
+        uses: bridgecrewio/checkov-action@v12
         with:
           file: ./environments/${{ github.event.inputs.environment }}/${{ env.TERRAFORM_PLAN_JSON_FILE }}
           framework: terraform_plan 
