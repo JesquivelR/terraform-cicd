@@ -83,6 +83,7 @@ jobs:
           terraform show -json tfplan.binary > ${{ env.TERRAFORM_PLAN_JSON_FILE }}
           
           ls -l ${{ env.TERRAFORM_PLAN_JSON_FILE }}
+          pwd
 
       - name: Upload Terraform Plan JSON
         uses: actions/upload-artifact@v4
@@ -99,6 +100,7 @@ jobs:
       - name: Run Infracost Breakdown
         working-directory: ./environments/${{ github.event.inputs.environment }}
         run: |
+          pwd
           # Genera el desglose en formato JSON y lo guarda en la raíz del workspace
           infracost breakdown \
             --path ./environments/${{ inputs.environment }}/tfplan.json \
